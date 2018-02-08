@@ -45,7 +45,11 @@ install: gopath
 	install -D -m 00644 yum.conf.in $(DESTDIR)/usr/share/defaults/mixer/yum.conf.in
 
 check: gopath
-	go test ${GO_PACKAGE_PREFIX}/...
+	go test -cover ${GO_PACKAGE_PREFIX}/...
+
+checkcoverage: gopath
+	test ${PKG}
+	go test -cover ${GO_PACKAGE_PREFIX}/${PKG} -coverprofile=coverage.out
 
 .PHONY: lint
 lint: gopath
