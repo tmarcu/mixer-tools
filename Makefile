@@ -47,9 +47,13 @@ install: gopath
 check: gopath
 	go test -cover ${GO_PACKAGE_PREFIX}/...
 
+.PHONY: checkcoverage
 checkcoverage: gopath
-	test ${PKG}
+ifeq (,${PKG})
+	$(error PKG is not set, try make PKG=swupd checkcoverage)
+else
 	go test -cover ${GO_PACKAGE_PREFIX}/${PKG} -coverprofile=coverage.out
+endif
 
 .PHONY: lint
 lint: gopath
