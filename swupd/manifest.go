@@ -315,7 +315,7 @@ func (m *Manifest) WriteManifest(w io.Writer) error {
 	}
 	err = manifestTemplate.Execute(w, m)
 	if err != nil {
-		return fmt.Errorf("couldn't write manifest: %s", err)
+		return fmt.Errorf("couldn't write Manifest.%s: %s", m.Name, err)
 	}
 	return nil
 }
@@ -984,26 +984,19 @@ func writeIndexManifest(c *config, ui *UpdateInfo, bundles []*Manifest) (*Manife
 	// linkPeersAndChange will update file versions correctly
 	_, _, _ = idxMan.linkPeersAndChange(oldM, *c, ui.minVersion)
 	// now add any new files to the full manifest
-	lenIdxM := len(idxMan.Files)
-	lenFullM := len(newFull.Files)
-	for ix, fx := 0, 0; ix < lenIdxM && fx < lenFullM; {
-		idxF := idxMan.Files[ix]
-		fulF := newFull.Files[fx]
-		switch {
-		case idxF.Name < fulF.Name:
-			// only present in full
-			ix++
-		case idxF.Name > fulF.Name:
-			// only present in idx manifest, add to full
-			newFull.Files = append(newFull.Files, idxF)
-			newFull.Header.FileCount++
-			fx++
-		default:
-			// present in both but updated in idx man, replace
-			fulF = idxF
-			ix++
-			fx++
+	for _, idxF := range idxMan.Files {
+		i := sort.Search(len(newFull.Files), func(i int) bool {
+			return newFull.Files[i].Name >= idxF.Name
+		})
+
+		if i < len(newFull.Files) && newFull.Files[i].Name == idxF.Name {
+			// overwrite existing
+			newFull.Files[i] = idxF
+			continue
 		}
+
+		// add to full manifest
+		newFull.Files = append(newFull.Files, idxF)
 	}
 
 	manOutput := filepath.Join(c.outputDir, fmt.Sprint(ui.version), "Manifest."+indexBundle)
