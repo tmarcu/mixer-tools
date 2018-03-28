@@ -24,6 +24,8 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +45,10 @@ import (
 // Version of Mixer. Also used by the Makefile for releases.
 const Version = "4.5.3"
 
+// Native controls whether mixer runs the command on the native machine or in a
+// container.
+var Native = false
+
 // Offline controls whether mixer attempts to automatically cache upstream
 // bundles. In offline mode, all necessary bundles must exist in local-bundles.
 var Offline = false
@@ -53,6 +59,7 @@ type Builder struct {
 	Config config.MixConfig
 
 	BuildScript string
+	BuildConf   string
 
 	MixVer            string
 	MixVerFile        string
@@ -109,6 +116,20 @@ func NewFromConfig(conf string) (*Builder, error) {
 	return b, nil
 }
 
+// GetConfigPath returns the default config path if the provided path is empty
+func GetConfigPath(path string) (string, error) {
+	if path != "" {
+		return path, nil
+	}
+
+	pwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(pwd, "builder.conf"), nil
+}
+
 // initDirs creates the directories mixer uses
 func (b *Builder) initDirs() error {
 	// Create folder to store local rpms if defined but doesn't already exist
@@ -135,7 +156,90 @@ func (b *Builder) initDirs() error {
 
 // Get latest CLR version
 func (b *Builder) getLatestUpstreamVersion() (string, error) {
-	return helpers.DownloadFile(b.UpstreamURL, "/latest")
+	ver, err := b.DownloadFileFromUpstreamAsString("/latest")
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to retrieve latest published upstream version")
+	}
+
+	return ver, nil
+}
+
+func (b *Builder) getUpstreamFileReader(subpath string) (*io.ReadCloser, error) {
+	// Build the URL
+	end, err := url.Parse(subpath)
+	if err != nil {
+		return nil, err
+	}
+	base, err := url.Parse(b.UpstreamURL)
+	if err != nil {
+		return nil, err
+	}
+	resolved := base.ResolveReference(end).String()
+
+	resp, err := http.Get(resolved)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("got status %q when downloading: %s", resp.Status, resolved)
+	}
+
+	return &resp.Body, nil
+}
+
+// DownloadFileFromUpstream will download a file from the Upstream URL
+// joined with the passed subpath and write that file to the supplied filename.
+func (b *Builder) DownloadFileFromUpstream(subpath string, filename string) error {
+	fr, err := b.getUpstreamFileReader(subpath)
+	if err != nil {
+		return errors.Wrap(err, "Failed to download file from upstream")
+	}
+	defer func() {
+		_ = (*fr).Close()
+	}()
+
+	// If no filename, infer from download path
+	if filename == "" {
+		_, filename = filepath.Split(subpath)
+	}
+
+	out, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = out.Close()
+	}()
+
+	_, err = io.Copy(out, *fr)
+	if err != nil {
+		if rmErr := os.RemoveAll(filename); err != nil {
+			return errors.Wrap(err, rmErr.Error())
+		}
+		return err
+	}
+
+	return nil
+}
+
+// DownloadFileFromUpstreamAsString will download a file from the Upstream URL
+// joined with the passed subpath. It will trim spaces from the result.
+func (b *Builder) DownloadFileFromUpstreamAsString(subpath string) (string, error) {
+	fr, err := b.getUpstreamFileReader(subpath)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to download file from upstream")
+	}
+	defer func() {
+		_ = (*fr).Close()
+	}()
+
+	content, err := ioutil.ReadAll(*fr)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(content)), nil
 }
 
 const mixDirGitIgnore = `upstream-bundles/
@@ -234,6 +338,19 @@ func (b *Builder) InitMix(upstreamVer string, mixVer string, allLocal bool, allU
 	}
 
 	return nil
+}
+
+// LoadBuilderConf will read the builder configuration from the command line if
+// it was provided, otherwise it will fall back to reading the configuration from
+// the local builder.conf file.
+func (b *Builder) LoadBuilderConf(builderconf string) error {
+	var err error
+	b.BuildConf, err = GetConfigPath(builderconf)
+	if err != nil {
+		return err
+	}
+
+	return b.Config.LoadConfig(b.BuildConf)
 }
 
 // ReadVersions will initialise the mix versions (mix and clearlinux) from
@@ -1964,18 +2081,18 @@ func createDeltaPacks(from *swupd.Manifest, to *swupd.Manifest, printReport bool
 	sort.Strings(orderedBundles)
 
 	for _, name := range orderedBundles {
-		bp := bundlesToPack[name]
-		packPath := filepath.Join(outputDir, fmt.Sprint(bp.ToVersion), swupd.GetPackFilename(bp.Name, bp.FromVersion))
+		b := bundlesToPack[name]
+		packPath := filepath.Join(outputDir, fmt.Sprint(b.ToVersion), swupd.GetPackFilename(b.Name, b.FromVersion))
 		_, err = os.Lstat(packPath)
 		if err == nil {
-			fmt.Printf("  Delta pack already exists for %s from %d to %d\n", bp.Name, bp.FromVersion, bp.ToVersion)
+			fmt.Printf("  Delta pack already exists for %s from %d to %d\n", b.Name, b.FromVersion, b.ToVersion)
 			continue
 		}
 		if !os.IsNotExist(err) {
 			return errors.Wrapf(err, "couldn't access existing pack file %s", packPath)
 		}
-		fmt.Printf("  Creating delta pack for bundle %q from %d to %d\n", bp.Name, bp.FromVersion, bp.ToVersion)
-		info, err := swupd.CreatePack(bp.Name, bp.FromVersion, bp.ToVersion, outputDir, bundleDir, numWorkers)
+		fmt.Printf("  Creating delta pack for bundle %q from %d to %d\n", b.Name, b.FromVersion, b.ToVersion)
+		info, err := swupd.CreatePack(b.Name, b.FromVersion, b.ToVersion, outputDir, bundleDir, numWorkers)
 		if err != nil {
 			return err
 		}
@@ -2022,14 +2139,14 @@ func writeMetaFiles(path, format, version string) error {
 	return ioutil.WriteFile(filepath.Join(path, "mixer-src-version"), []byte(version), 0644)
 }
 
-func (b *Builder) getUpstreamFormatRange() (format string, first, latest uint32, err error) {
-	format, err = helpers.DownloadFile(b.UpstreamURL, fmt.Sprintf("update/%d/format", b.UpstreamVerUint32))
+func (b *Builder) getUpstreamFormatRange(version string) (format string, first, latest uint32, err error) {
+	format, err = b.DownloadFileFromUpstreamAsString(fmt.Sprintf("update/%s/format", version))
 	if err != nil {
 		return "", 0, 0, errors.Wrap(err, "couldn't download information about upstream")
 	}
 
 	readUint32 := func(subpath string) (uint32, error) {
-		str, rerr := helpers.DownloadFile(b.UpstreamURL, subpath)
+		str, rerr := b.DownloadFileFromUpstreamAsString(subpath)
 		if rerr != nil {
 			return 0, rerr
 		}
@@ -2058,7 +2175,7 @@ func (b *Builder) getUpstreamFormatRange() (format string, first, latest uint32,
 // PrintVersions prints the current mix and upstream versions, and the
 // latest version of upstream.
 func (b *Builder) PrintVersions() error {
-	format, first, latest, err := b.getUpstreamFormatRange()
+	format, first, latest, err := b.getUpstreamFormatRange(b.UpstreamVer)
 	if err != nil {
 		return err
 	}
@@ -2077,7 +2194,7 @@ Latest upstream in format: %d
 // UpdateVersions will validate then update both mix and upstream versions. If upstream
 // version is 0, then the latest upstream version possible will be taken instead.
 func (b *Builder) UpdateVersions(nextMix, nextUpstream uint32) error {
-	format, first, latest, err := b.getUpstreamFormatRange()
+	format, first, latest, err := b.getUpstreamFormatRange(b.UpstreamVer)
 	if err != nil {
 		return err
 	}
@@ -2095,7 +2212,7 @@ func (b *Builder) UpdateVersions(nextMix, nextUpstream uint32) error {
 	}
 
 	// Verify the version exists by checking if its Manifest.MoM is around.
-	_, err = helpers.DownloadFile(b.UpstreamURL, fmt.Sprintf("/update/%d/Manifest.MoM", nextUpstream))
+	_, err = b.DownloadFileFromUpstream(fmt.Sprintf("/update/%d/Manifest.MoM", nextUpstream))
 	if err != nil {
 		return errors.Wrapf(err, "invalid upstream version %d", nextUpstream)
 	}
@@ -2122,4 +2239,28 @@ Updated upstream: %d (format: %s)
 	fmt.Printf("Wrote %s.\n", b.UpstreamVerFile)
 
 	return nil
+}
+
+// StageMixForBump prepares the mix for the two format bumps to be executed. The
+// current upstreamversion is saved in a backup ".bump" file, and replaced with
+// the latest version in the format range of the most recent build.
+func (b *Builder) StageMixForBump() error {
+	lastBuildVer, err := b.getLastBuildUpstreamVersion()
+	if err != nil {
+		return err
+	}
+	_, _, latest, err := b.getUpstreamFormatRange(lastBuildVer)
+	if err != nil {
+		return err
+	}
+
+	// Copy current upstreamversion to upstreamversion.bump
+	vFile := filepath.Join(b.Config.Builder.VersionPath, b.MixVerFile)
+	vBFile := filepath.Join(b.Config.Builder.VersionPath, b.MixVerFile+".bump")
+	if err := helpers.CopyFile(vBFile, vFile); err != nil {
+		return err
+	}
+
+	// Set current upstreamversion to latest
+	return ioutil.WriteFile(vFile, []byte(strconv.FormatUint(uint64(latest), 10)), 0644)
 }
