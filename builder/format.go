@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/clearlinux/mixer-tools/config"
 	"github.com/clearlinux/mixer-tools/helpers"
 	"github.com/pkg/errors"
 )
@@ -31,19 +32,8 @@ import (
 func (b *Builder) UpdateFormatVersion(version string) error {
 	b.Config.Swupd.Format = version
 
-	if UseNewConfig {
-		var config string
-		var err error
-		if config, err = GetConfigPath(config); err != nil {
-			return err
-		}
-
-		var mc MixConfig
-		if err = mc.LoadConfig(config); err != nil {
-			return err
-		}
-
-		return mc.SetProperty(config, "Swupd.FORMAT", version)
+	if config.UseNewConfig {
+		return b.Config.SetProperty("Swupd.FORMAT", version)
 	}
 
 	builderData, err := ioutil.ReadFile(b.BuildConf)

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/clearlinux/mixer-tools/builder"
+	"github.com/clearlinux/mixer-tools/config"
 	"github.com/clearlinux/mixer-tools/helpers"
 	"github.com/pkg/errors"
 
@@ -118,12 +119,12 @@ var buildUpstreamFormatCmd = &cobra.Command{
 	Short: "Use to create the necessary builds to cross an upstream format",
 	Long:  `Use to create the necessary builds to cross an upstream format`,
 	Run: func(cmd *cobra.Command, args []string) {
-		b, err := builder.NewFromConfig(config)
+		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
 		}
 		cmdToRun := strings.Split("mixer build format-bump new", " ")
-		if builder.UseNewConfig {
+		if config.UseNewConfig {
 			cmdToRun = append(cmdToRun, "--new-config")
 		}
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
@@ -138,7 +139,7 @@ var buildUpstreamFormatCmd = &cobra.Command{
 			fail(err)
 		}
 		cmdToRun = strings.Split("mixer build format-bump old", " ")
-		if builder.UseNewConfig {
+		if config.UseNewConfig {
 			cmdToRun = append(cmdToRun, "--new-config")
 		}
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
@@ -156,19 +157,19 @@ var buildFormatBumpCmd = &cobra.Command{
 	Short: "Used to create a downstream format bump",
 	Long:  `Used to create a downstream format bump`,
 	Run: func(cmd *cobra.Command, args []string) {
-		b, err := builder.NewFromConfig(config)
+		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
 		}
 		cmdToRun := strings.Split("mixer build format-bump new", " ")
-		if builder.UseNewConfig {
+		if config.UseNewConfig {
 			cmdToRun = append(cmdToRun, "--new-config")
 		}
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
 			fail(err)
 		}
 		cmdToRun = strings.Split("mixer build format-bump old", " ")
-		if builder.UseNewConfig {
+		if config.UseNewConfig {
 			cmdToRun = append(cmdToRun, "--new-config")
 		}
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
@@ -184,7 +185,7 @@ var buildFormatNewCmd = &cobra.Command{
 	Short: "Build the +20 version in the new format for the format bump",
 	Long:  `Build the +20 version in the new format for the format bump`,
 	Run: func(cmd *cobra.Command, args []string) {
-		b, err := builder.NewFromConfig(config)
+		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
 		}
@@ -282,7 +283,7 @@ var buildFormatOldCmd = &cobra.Command{
 	Short: "Build the +10 version in the old format for the format bump",
 	Long:  `Build the +10 version in the old format for the format bump`,
 	Run: func(cmd *cobra.Command, args []string) {
-		b, err := builder.NewFromConfig(config)
+		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
 		}

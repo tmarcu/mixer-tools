@@ -70,7 +70,7 @@ var RootCmd = &cobra.Command{
 			return checkCmdDeps(cmd)
 		}
 
-		b, err := builder.NewFromConfig(config)
+		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
 		}
