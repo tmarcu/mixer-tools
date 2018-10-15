@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1306,14 +1307,14 @@ func (b *Builder) UpdateMixVer(version int) error {
 
 // UpdateOsRelease sets the mix version in the full-chroot os-release file
 func (b *Builder) UpdateOsRelease(version string) error {
-	var file *File
 	osReleaseFile := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, "full/usr/lib/os-release")
-	if file, err := ioutil.ReadFile(osReleaseFile); err == nil {
+	file, err := ioutil.ReadFile(osReleaseFile)
+	if err == nil {
 		return err
 	}
 
 	re := regexp.MustCompile(`VERSION_ID\s*=\s*(0-9)+`)
-	newFile := re.ReplaceAllString(osReleaseFile, version)
+	newFile := re.ReplaceAllString(string(file), version)
 
 	return ioutil.WriteFile(osReleaseFile, []byte(newFile), 0644)
 }
@@ -1326,6 +1327,56 @@ func (b *Builder) UpdateFormatFile(version int) error {
 	}
 
 	return ioutil.WriteFile(formatFile, []byte(strconv.Itoa(version)), 0644)
+}
+
+// RemoveDeletedBundlesInfo wipes the <bundle>-info files and replaces them with
+// <bundle>/ directories that are empty. When the manifest creation happens it will
+// mark all files in that bundles as deleted.
+func (b *Builder) RemoveDeletedBundlesInfo() error {
+	path := b.Config.Mixer.LocalBundleDir
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+
+	var scanner *bufio.Scanner
+	for _, file := range files {
+		// We only care about removing <bundle>-info files
+		if !strings.HasSuffix(file.Name(), "-info") {
+			continue
+		}
+		fileToScan := filepath.Join(path, file.Name())
+		f, err := os.Open(fileToScan)
+		if err != nil {
+			return err
+		}
+
+		// Scan the files and find which bundle definitions are marked deprecated
+		scanner = bufio.NewScanner(f)
+		var str string
+		re := regexp.MustCompile(`#\s*[STATUS]:\s*Deprecated.*`)
+		for scanner.Scan() {
+			str = scanner.Text()
+			// Don't scan past header, stop once we have no more # comments
+			if str[0] == '#' {
+				if index := re.FindStringIndex(str); index != nil {
+					// This bundle is deprecated, remove it
+					if err = os.RemoveAll(fileToScan); err != nil {
+						return err
+					}
+					// Create the empty dir for update to mark all files as deleted
+					if err = os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
+						return errors.Wrapf(err, "Failed to create bundle directory: %s", fileToScan[:len(fileToScan)-5])
+					}
+				}
+			} else {
+				f.Close()
+				break
+			}
+			f.Close()
+		}
+	}
+	return nil
 }
 
 // If Base == true, template will include the [main] and [clear] sections.

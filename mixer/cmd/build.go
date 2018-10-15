@@ -184,7 +184,7 @@ var buildFormatBumpCmd = &cobra.Command{
 // This is the last build in the original format. At this point add ONLY the
 // content relevant to the format bump to the mash to be used. Relevant content
 // should be the only change.
-// 
+//
 // mixer will create manifests and update content based on the format it is
 // building for. The format is set in the mixer.state file.
 var buildFormatOldCmd = &cobra.Command{
@@ -206,7 +206,7 @@ var buildFormatOldCmd = &cobra.Command{
 		if err != nil {
 			fail(err)
 		}
-		ver, err := strconv.Atoi(lastVer)
+		ver, err = strconv.Atoi(lastVer)
 		if err != nil {
 			fail(err)
 		}
@@ -221,8 +221,10 @@ var buildFormatOldCmd = &cobra.Command{
 			fail(err)
 		}
 
-		// Remove deleted bundles here
-		// RemoveDeleted()
+		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
+		if err = b.RemoveDeletedBundlesInfo(); err != nil {
+			fail(err)
+		}
 
 		// Replace the +10 version in /usr/lib/os-release with +20 version and write the
 		// new format to the format file on disk. This is so clients will already be on
@@ -323,7 +325,6 @@ var buildFormatNewCmd = &cobra.Command{
 			SkipPacks:     buildFlags.skipPacks,
 		}
 		err = b.BuildUpdate(params)
-		if err != nil {i(lastVer)
 		if err != nil {
 			failf("Couldn't build update: %s", err)
 		}
