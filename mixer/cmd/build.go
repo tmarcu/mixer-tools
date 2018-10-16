@@ -170,13 +170,84 @@ var buildFormatBumpCmd = &cobra.Command{
 		if err != nil {
 			fail(err)
 		}
-		cmdToRun := strings.Split("mixer build format-bump new", " ")
+		cmdToRun := strings.Split("mixer build format-bump old", " ")
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
 			fail(err)
 		}
-		cmdToRun = strings.Split("mixer build format-bump old", " ")
+		cmdToRun = strings.Split("mixer build format-bump new", " ")
 		if err := b.RunCommandInContainer(cmdToRun); err != nil {
 			fail(err)
+		}
+	},
+}
+
+// This is the last build in the original format. At this point add ONLY the
+// content relevant to the format bump to the mash to be used. Relevant content
+// should be the only change.
+// 
+// mixer will create manifests and update content based on the format it is
+// building for. The format is set in the mixer.state file.
+var buildFormatOldCmd = &cobra.Command{
+	Use:   "old",
+	Short: "Build the +10 version in the old format for the format bump",
+	Long:  `Build the +10 version in the old format for the format bump`,
+	Run: func(cmd *cobra.Command, args []string) {
+		b, err := builder.NewFromConfig(configFile)
+		if err != nil {
+			fail(err)
+		}
+		setWorkers(b)
+		ver, err := strconv.Atoi(b.MixVer)
+		if err != nil {
+			fail(err)
+		}
+
+		lastVer, err := b.GetLastBuildVersion()
+		if err != nil {
+			fail(err)
+		}
+		ver, err := strconv.Atoi(lastVer)
+		if err != nil {
+			fail(err)
+		}
+		// Update mixer to build version +10, the last build in the format
+		if err = b.UpdateMixVer(ver + 10); err != nil {
+			failf("Couldn't update Mix Version")
+		}
+
+		// Build bundles normally. At this point the bundles to be deleted should still
+		// be part of the mixbundles list and the groups.ini
+		if err = buildBundles(b, buildFlags.noSigning, buildFlags.clean); err != nil {
+			fail(err)
+		}
+
+		// Remove deleted bundles here
+		// RemoveDeleted()
+
+		// Replace the +10 version in /usr/lib/os-release with +20 version and write the
+		// new format to the format file on disk. This is so clients will already be on
+		// the new format when they update to the +10 because the content is the same as
+		// the +20.
+		newFormat, err := strconv.Atoi(b.State.Mix.Format)
+		if err != nil {
+			fail(err)
+		}
+		newFormat++
+		b.UpdateOsRelease(b.MixVer)
+		b.UpdateFormatFile(newFormat)
+
+		// Build the update content for the +10 build
+		params := builder.UpdateParameters{
+			MinVersion:    buildFlags.minVersion,
+			Format:        b.State.Mix.Format,
+			Publish:       !buildFlags.noPublish,
+			SkipSigning:   buildFlags.noSigning,
+			SkipFullfiles: buildFlags.skipFullfiles,
+			SkipPacks:     buildFlags.skipPacks,
+		}
+		err = b.BuildUpdate(params)
+		if err != nil {
+			failf("Couldn't build update: %s", err)
 		}
 	},
 }
@@ -253,71 +324,6 @@ var buildFormatNewCmd = &cobra.Command{
 		}
 		err = b.BuildUpdate(params)
 		if err != nil {i(lastVer)
-		if err != nil {
-			failf("Couldn't build update: %s", err)
-		}
-	},
-}
-
-// This is the last build in the original format. At this point add ONLY the
-// content relevant to the format bump to the mash to be used. Relevant content
-// should be the only change.
-// 
-// mixer will create manifests and update content based on the format it is
-// building for. The format is set in the mixer.state file.
-var buildFormatOldCmd = &cobra.Command{
-	Use:   "old",
-	Short: "Build the +10 version in the old format for the format bump",
-	Long:  `Build the +10 version in the old format for the format bump`,
-	Run: func(cmd *cobra.Command, args []string) {
-		b, err := builder.NewFromConfig(configFile)
-		if err != nil {
-			fail(err)
-		}
-		setWorkers(b)
-		ver, err := strconv.Atoi(b.MixVer)
-		if err != nil {
-			fail(err)
-		}
-
-		lastVer, err := b.GetLastBuildVersion()
-		if err != nil {
-			fail(err)
-		}
-		ver, err := strconv.Atoi(lastVer)
-		if err != nil {
-			fail(err)
-		}
-		// Update mixer to build version +10, the last build in the format
-		if err = b.UpdateMixVer(ver + 10); err != nil {
-			failf("Couldn't update Mix Version")
-		}
-
-		// Build bundles normally. At this point the bundles to be deleted should still
-		// be part of the mixbundles list and the groups.ini
-		if err = buildBundles(b, buildFlags.noSigning, buildFlags.clean); err != nil {
-			fail(err)
-		}
-
-		// Remove deleted bundles here
-		// RemoveDeleted()
-
-		// Replace the +10 version in /usr/lib/os-release with +20 version and write the
-		// new format to the format file on disk. This is so clients will already be on
-		// the new format when they update to the +10 because the content is the same as
-		// the +20.
-		// UpdateVersionAndFormatFiles()
-
-		// Build the update content for the +10 build
-		params := builder.UpdateParameters{
-			MinVersion:    buildFlags.minVersion,
-			Format:        b.State.Mix.Format,
-			Publish:       !buildFlags.noPublish,
-			SkipSigning:   buildFlags.noSigning,
-			SkipFullfiles: buildFlags.skipFullfiles,
-			SkipPacks:     buildFlags.skipPacks,
-		}
-		err = b.BuildUpdate(params)
 		if err != nil {
 			failf("Couldn't build update: %s", err)
 		}

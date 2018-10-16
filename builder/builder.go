@@ -1304,6 +1304,30 @@ func (b *Builder) UpdateMixVer(version int) error {
 	return ioutil.WriteFile(filepath.Join(b.Config.Builder.VersionPath, b.MixVerFile), []byte(b.MixVer), 0644)
 }
 
+// UpdateOsRelease sets the mix version in the full-chroot os-release file
+func (b *Builder) UpdateOsRelease(version string) error {
+	var file *File
+	osReleaseFile := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, "full/usr/lib/os-release")
+	if file, err := ioutil.ReadFile(osReleaseFile); err == nil {
+		return err
+	}
+
+	re := regexp.MustCompile(`VERSION_ID\s*=\s*(0-9)+`)
+	newFile := re.ReplaceAllString(osReleaseFile, version)
+
+	return ioutil.WriteFile(osReleaseFile, []byte(newFile), 0644)
+}
+
+// UpdateFormatFile update the format number in the full-chroot format file
+func (b *Builder) UpdateFormatFile(version int) error {
+	formatFile := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, "full/usr/share/defaults/swupd/format")
+	if _, err := os.Stat(formatFile); err == nil {
+		return err
+	}
+
+	return ioutil.WriteFile(formatFile, []byte(strconv.Itoa(version)), 0644)
+}
+
 // If Base == true, template will include the [main] and [clear] sections.
 // If Local == true, template will include the [local] section.
 type dnfConf struct {
