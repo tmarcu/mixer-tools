@@ -307,8 +307,11 @@ var buildFormatNewCmd = &cobra.Command{
 
 		setWorkers(b)
 
-		// Fill this in w/Update bundle definitions
-		// if err := UpdateBundlesForFormatBump(); err != nil {...}
+		// Remove the bundles from groups.ini and mixbundles so they are not
+		// tracked anymore and manifests do not get created for them
+		if err := b.RemoveDeletedBundles(); err != nil {
+			fail(err)
+		}
 
 		minver, err := strconv.Atoi(b.MixVer)
 		if err != nil {
