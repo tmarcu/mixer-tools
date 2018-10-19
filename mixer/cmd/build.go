@@ -290,11 +290,9 @@ var buildFormatNewCmd = &cobra.Command{
 			fail(err)
 		}
 
-		lastVer, err := b.GetLastBuildVersion()
-		if err != nil {
-			fail(err)
-		}
-		ver, err := strconv.Atoi(lastVer)
+		// Set mixversion to +20 build now, we only need to build update since we
+		// already have the bundles created
+		ver, err := strconv.Atoi(b.MixVer)
 		if err != nil {
 			fail(err)
 		}
@@ -303,12 +301,7 @@ var buildFormatNewCmd = &cobra.Command{
 		}
 
 		// Set format to format+1 for future builds
-		newFormat, err := strconv.Atoi(b.State.Mix.Format)
-		if err != nil {
-			fail(err)
-		}
-		newFormat++
-		if err = b.UpdateFormatVersion(strconv.Itoa(newFormat)); err != nil {
+		if err = b.UpdateFormatVersion(buildFlags.newFormat); err != nil {
 			fail(err)
 		}
 
@@ -317,15 +310,15 @@ var buildFormatNewCmd = &cobra.Command{
 		// Fill this in w/Update bundle definitions
 		// if err := UpdateBundlesForFormatBump(); err != nil {...}
 
-		ver, err = strconv.Atoi(b.MixVer)
+		minver, err := strconv.Atoi(b.MixVer)
 		if err != nil {
 			fail(err)
 		}
 
 		// Build the +20 update so we don't have to switch tooling in between
 		params := builder.UpdateParameters{
-			MinVersion:    ver,
-			Format:        strconv.Itoa(newFormat),
+			MinVersion:    minver,
+			Format:        buildFlags.newFormat,
 			Publish:       !buildFlags.noPublish,
 			SkipSigning:   buildFlags.noSigning,
 			SkipFullfiles: buildFlags.skipFullfiles,
