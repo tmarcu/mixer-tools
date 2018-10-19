@@ -253,6 +253,14 @@ var buildFormatOldCmd = &cobra.Command{
 		// Set the format back to old for the actual build update
 		b.State.Mix.Format = oldFormat
 
+		// Update mixer to build version +10, the version we want to output for old format
+		ver, err = strconv.Atoi(b.MixVer)
+		if err != nil {
+			fail(err)
+		}
+		if err = b.UpdateMixVer(ver - 10); err != nil {
+			failf("Couldn't update Mix Version")
+		}
 		// Build the update content for the +10 build
 		params := builder.UpdateParameters{
 			MinVersion:    buildFlags.minVersion,
