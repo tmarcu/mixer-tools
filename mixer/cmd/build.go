@@ -32,6 +32,8 @@ import (
 
 type buildCmdFlags struct {
 	format        string
+	newFormat     string
+	version       string
 	increment     bool
 	minVersion    int
 	clean         bool
@@ -107,6 +109,7 @@ var buildBundlesCmd = &cobra.Command{
 			fail(err)
 		}
 		setWorkers(b)
+
 		err = buildBundles(b, buildFlags.noSigning, buildFlags.clean)
 		if err != nil {
 			fail(err)
@@ -166,6 +169,9 @@ var buildFormatBumpCmd = &cobra.Command{
 	Long:   `Used to create a downstream format bump`,
 	Hidden: true,
 	Run: func(cmd *cobra.Command, args []string) {
+		if buildFlags.newFormat == "" {
+			fail(errors.New("Please supply the next format version with --new-format"))
+		}
 		b, err := builder.NewFromConfig(configFile)
 		if err != nil {
 			fail(err)
@@ -196,24 +202,26 @@ var buildFormatOldCmd = &cobra.Command{
 		if err != nil {
 			fail(err)
 		}
+
 		setWorkers(b)
-		ver, err := strconv.Atoi(b.MixVer)
-		if err != nil {
-			fail(err)
-		}
 
 		lastVer, err := b.GetLastBuildVersion()
 		if err != nil {
 			fail(err)
 		}
-		ver, err = strconv.Atoi(lastVer)
+		ver, err := strconv.Atoi(lastVer)
 		if err != nil {
 			fail(err)
 		}
-		// Update mixer to build version +10, the last build in the format
-		if err = b.UpdateMixVer(ver + 10); err != nil {
+		// Update mixer to build version +20, to build the bundles with +20 inside not +10
+		if err = b.UpdateMixVer(ver + 20); err != nil {
 			failf("Couldn't update Mix Version")
 		}
+
+		// Change the format internally just for building bundles so the right
+		// /usr/share/defaults/swupd/format is inserted; preserve old format
+		oldFormat := b.State.Mix.Format
+		b.State.Mix.Format = buildFlags.newFormat
 
 		// Build bundles normally. At this point the bundles to be deleted should still
 		// be part of the mixbundles list and the groups.ini
@@ -221,22 +229,29 @@ var buildFormatOldCmd = &cobra.Command{
 			fail(err)
 		}
 
+		// Link the +20 bundles to the +10 so we are building the update with the same
+		// underlying content. The only things that might change are the manifests
+		// (potentially the pack and full-file formats as well, though this is very
+		// rare).
+		ver, err = strconv.Atoi(b.MixVer)
+		if err != nil {
+			fail(err)
+		}
+		ver -= 10
+		source := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer)
+		dest := filepath.Join(b.Config.Builder.ServerStateDir, "image", strconv.Itoa(ver))
+		fmt.Println(" Copying +20 bundles to +10 bundles")
+		if err = helpers.RunCommandSilent("cp", "-al", source, dest); err != nil {
+			failf("Failed to copy +10 bundles to +20: %s\n", err)
+		}
+
 		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
 		if err = b.RemoveDeletedBundlesInfo(); err != nil {
 			fail(err)
 		}
 
-		// Replace the +10 version in /usr/lib/os-release with +20 version and write the
-		// new format to the format file on disk. This is so clients will already be on
-		// the new format when they update to the +10 because the content is the same as
-		// the +20.
-		newFormat, err := strconv.Atoi(b.State.Mix.Format)
-		if err != nil {
-			fail(err)
-		}
-		newFormat++
-		b.UpdateOsRelease(b.MixVer)
-		b.UpdateFormatFile(newFormat)
+		// Set the format back to old for the actual build update
+		b.State.Mix.Format = oldFormat
 
 		// Build the update content for the +10 build
 		params := builder.UpdateParameters{
@@ -293,22 +308,6 @@ var buildFormatNewCmd = &cobra.Command{
 
 		// Fill this in w/Update bundle definitions
 		// if err := UpdateBundlesForFormatBump(); err != nil {...}
-
-		// Link the +10 bundles to the +20 so we are building the update with the same
-		// underlying content. The only things that might change are the manifests
-		// (potentially the pack and full-file formats as well, though this is very
-		// rare).
-		prevVersion, err := strconv.Atoi(b.MixVer)
-		if err != nil {
-			fail(err)
-		}
-		prevVersion -= 10
-		source := filepath.Join(b.Config.Builder.ServerStateDir, "image", strconv.Itoa(prevVersion))
-		dest := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer)
-		fmt.Println(" Copying +10 bundles to +10 bundles")
-		if err = helpers.RunCommandSilent("cp", "-al", source, dest); err != nil {
-			failf("Failed to copy +10 bundles to +20: %s\n", err)
-		}
 
 		ver, err = strconv.Atoi(b.MixVer)
 		if err != nil {
@@ -522,6 +521,7 @@ func init() {
 
 	buildFormatBumpCmd.AddCommand(buildFormatNewCmd)
 	buildFormatBumpCmd.AddCommand(buildFormatOldCmd)
+	buildFormatBumpCmd.Flags().StringVar(&buildFlags.newFormat, "new-format", "", "Supply the next format version to build mixes in")
 
 	buildCmd.PersistentFlags().IntVar(&buildFlags.numFullfileWorkers, "fullfile-workers", 0, "Number of parallel workers when creating fullfiles, 0 means number of CPUs")
 	buildCmd.PersistentFlags().IntVar(&buildFlags.numDeltaWorkers, "delta-workers", 0, "Number of parallel workers when creating deltas, 0 means number of CPUs")
@@ -531,6 +531,7 @@ func init() {
 
 	buildBundlesCmd.Flags().BoolVar(&buildFlags.clean, "clean", false, "Wipe the /image and /www dirs if they exist")
 	buildBundlesCmd.Flags().BoolVar(&buildFlags.noSigning, "no-signing", false, "Do not generate a certificate to sign the Manifest.MoM")
+
 	unusedBoolFlag := false
 	buildBundlesCmd.Flags().BoolVar(&unusedBoolFlag, "new-chroots", false, "")
 	_ = buildBundlesCmd.Flags().MarkHidden("new-chroots")

@@ -379,7 +379,7 @@ func initRPMDB(chrootDir string) error {
 	)
 }
 
-func buildOsCore(packagerCmd []string, chrootDir, version string) error {
+func buildOsCore(b *Builder, packagerCmd []string, chrootDir, version string) error {
 	err := initRPMDB(chrootDir)
 	if err != nil {
 		return err
@@ -393,7 +393,7 @@ func buildOsCore(packagerCmd []string, chrootDir, version string) error {
 		return err
 	}
 
-	if err := fixOSRelease(filepath.Join(chrootDir, "usr/lib/os-release"), version); err != nil {
+	if err := b.UpdateOsRelease(version); err != nil {
 		return errors.Wrap(err, "couldn't fix os-release file")
 	}
 
@@ -515,7 +515,7 @@ func buildFullChroot(b *Builder, set *bundleSet, packagerCmd []string, buildVers
 		// special handling for os-core
 		if bundle.Name == "os-core" {
 			fmt.Println("... building special os-core content")
-			if err := buildOsCore(packagerCmd, fullDir, version); err != nil {
+			if err := buildOsCore(b, packagerCmd, fullDir, version); err != nil {
 				return err
 			}
 		}
@@ -836,40 +836,6 @@ func createVersionsFile(baseDir string, packagerCmd []string) error {
 		fmt.Fprintf(w, "%-50s%s\n", e.name, e.version)
 	}
 	return w.Flush()
-}
-
-func fixOSRelease(filename, version string) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = f.Close()
-	}()
-
-	// TODO: If this is a mix, NAME and ID should probably change too. Create a section in
-	// configuration that will be used as reference to fill this.
-	// TODO: If this is a mix, add extra field for keeping track of the Clear Linux version
-	// used. Maybe also put the UPSTREAM URL, so we are ready to support mixes of mixes.
-	//
-	// See also: https://github.com/clearlinux/mixer-tools/issues/113
-
-	var newBuf bytes.Buffer
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		text := scanner.Text()
-		if strings.HasPrefix(text, "VERSION_ID=") {
-			text = "VERSION_ID=" + version
-		}
-		fmt.Fprintln(&newBuf, text)
-	}
-
-	err = scanner.Err()
-	if err != nil {
-		return err
-	}
-
-	return ioutil.WriteFile(filename, newBuf.Bytes(), 0644)
 }
 
 func merge(a []string, b ...string) []string {

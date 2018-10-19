@@ -1373,8 +1373,8 @@ func (b *Builder) RemoveDeletedBundlesInfo() error {
 				f.Close()
 				break
 			}
-			f.Close()
 		}
+		f.Close()
 	}
 	return nil
 }
