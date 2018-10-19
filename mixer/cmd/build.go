@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -33,7 +34,6 @@ import (
 type buildCmdFlags struct {
 	format        string
 	newFormat     string
-	version       string
 	increment     bool
 	minVersion    int
 	clean         bool
@@ -250,11 +250,11 @@ var buildFormatOldCmd = &cobra.Command{
 		// mark all files in that bundles as deleted.
 		f := func(fileToScan string) error {
 			// This bundle is deprecated, remove the info file
-			if err := os.RemoveAll(fileToScan); err != nil {
+			if err = os.RemoveAll(fileToScan); err != nil {
 				return err
 			}
 			// Create the empty dir for update to mark all files as deleted
-			if err := os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
+			if err = os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
 				return errors.Wrapf(err, "Failed to create bundle directory: %s", fileToScan[:len(fileToScan)-5])
 			}
 			return nil
@@ -324,7 +324,35 @@ var buildFormatNewCmd = &cobra.Command{
 
 		// Remove the bundles from groups.ini and mixbundles so they are not
 		// tracked anymore and manifests do not get created for them
-		if err := b.RemoveDeletedBundles(); err != nil {
+		f := func(bundle string) error {
+			var groups []byte
+			filename := filepath.Join(b.Config.Builder.ServerStateDir, "groups.ini")
+			groups, err = ioutil.ReadFile(filename)
+			if err != nil {
+				return err
+			}
+			groupsini := string(groups)
+
+			bundleToRemove := fmt.Sprintf("\\[%s\\]\ngroup=%s", bundle, bundle)
+			re := regexp.MustCompile(bundleToRemove)
+			groupsini = re.ReplaceAllString(groupsini, "")
+
+			// We are rarely removing more than a couple bundles, so it is ok
+			// to just re-write the file for each one removed
+			err = ioutil.WriteFile(filename, []byte(groupsini), 0644)
+			if err != nil {
+				return err
+			}
+			// Remove bundle from: 		mix   local  git    (mixbundles list)
+			err = b.RemoveBundles(args, true, false, false)
+			if err != nil {
+				fail(err)
+			}
+
+			return nil
+		}
+
+		if err := b.ModifyBundles(f); err != nil {
 			fail(err)
 		}
 

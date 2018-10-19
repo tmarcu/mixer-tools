@@ -1365,27 +1365,16 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 					}
 				}
 			} else {
-				f.Close()
+				_ = f.Close()
 				break
 			}
 		}
-		f.Close()
+		_ = f.Close()
 	}
 	return nil
 }
 
 // RemoveDeletedBundles removes the bundles from groups.ini and also from mixbundles
-func (b *Builder) RemoveDeletedBundles() error {
-	var deletedBundles []string
-	var bundleToRemove string
-	for _, b := range deletedBundles {
-		bundleToRemove = fmt.Sprintf("\\[%s\\]\ngroup=%s", b, b)
-		re := regexp.MustCompile(bundleToRemove)
-		res := re.ReplaceAllString("", "")
-		fmt.Println(res)
-	}
-	return nil
-}
 
 // If Base == true, template will include the [main] and [clear] sections.
 // If Local == true, template will include the [local] section.
