@@ -1329,6 +1329,8 @@ func (b *Builder) UpdateFormatFile(version int) error {
 	return ioutil.WriteFile(formatFile, []byte(strconv.Itoa(version)), 0644)
 }
 
+// ModifyBundles goes through the bundle directory and performs an action when it finds
+// a Deprecated bundle
 func (b *Builder) ModifyBundles(action func(string) error) error {
 	path := b.Config.Mixer.LocalBundleDir
 	files, err := ioutil.ReadDir(path)
@@ -1370,25 +1372,6 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 		f.Close()
 	}
 	return nil
-}
-
-func replaceInfoWithDir(fileToScan string) error {
-	// This bundle is deprecated, remove the info file
-	if err := os.RemoveAll(fileToScan); err != nil {
-		return err
-	}
-	// Create the empty dir for update to mark all files as deleted
-	if err := os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
-		return errors.Wrapf(err, "Failed to create bundle directory: %s", fileToScan[:len(fileToScan)-5])
-	}
-	return nil
-}
-
-// RemoveDeletedBundlesInfo wipes the <bundle>-info files and replaces them with
-// <bundle>/ directories that are empty. When the manifest creation happens it will
-// mark all files in that bundles as deleted.
-func (b *Builder) RemoveDeletedBundlesInfo() error {
-	return b.ModifyBundles(replaceInfoWithDir(fileToScan))
 }
 
 // RemoveDeletedBundles removes the bundles from groups.ini and also from mixbundles

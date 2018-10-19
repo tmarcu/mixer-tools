@@ -245,8 +245,23 @@ var buildFormatOldCmd = &cobra.Command{
 			failf("Failed to copy +10 bundles to +20: %s\n", err)
 		}
 
+		// Wipes the <bundle>-info files and replaces them with
+		// <bundle>/ directories that are empty. When the manifest creation happens it will
+		// mark all files in that bundles as deleted.
+		f := func(fileToScan string) error {
+			// This bundle is deprecated, remove the info file
+			if err := os.RemoveAll(fileToScan); err != nil {
+				return err
+			}
+			// Create the empty dir for update to mark all files as deleted
+			if err := os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
+				return errors.Wrapf(err, "Failed to create bundle directory: %s", fileToScan[:len(fileToScan)-5])
+			}
+			return nil
+		}
+
 		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
-		if err = b.RemoveDeletedBundlesInfo(); err != nil {
+		if err = b.ModifyBundles(f); err != nil {
 			fail(err)
 		}
 
