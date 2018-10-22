@@ -1364,10 +1364,6 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 	var scanner *bufio.Scanner
 	for _, file := range files {
 		fmt.Println("CHECKING FILE: " + file.Name())
-		// We only care about removing <bundle>-info files
-		if !strings.HasSuffix(file.Name(), "-info") {
-			continue
-		}
 		fileToScan := filepath.Join(path, file.Name())
 		f, err := os.Open(fileToScan)
 		if err != nil {
@@ -1377,7 +1373,7 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 		// Scan the files and find which bundle definitions are marked deprecated
 		scanner = bufio.NewScanner(f)
 		var str string
-		re := regexp.MustCompile(`#\s*[STATUS]:\s*Deprecated.*`)
+		re := regexp.MustCompile("#\\s\\[STATUS\\]:\\s*Deprecated.*")
 		for scanner.Scan() {
 			str = scanner.Text()
 			fmt.Println("Scanning: " + str)
@@ -1386,7 +1382,7 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 				if index := re.FindStringIndex(str); index != nil {
 					fmt.Println("Found deprecated bundle: " + fileToScan)
 					// Call the callback function we need on the file we're scanning
-					if err = action(fileToScan); err != nil {
+					if err = action(file.Name()); err != nil {
 						return err
 					}
 				}

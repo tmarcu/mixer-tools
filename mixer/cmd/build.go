@@ -229,6 +229,27 @@ var buildFormatOldCmd = &cobra.Command{
 			fail(err)
 		}
 
+		// Wipes the <bundle>-info files and replaces them with
+		// <bundle>/ directories that are empty. When the manifest creation happens it will
+		// mark all files in that bundles as deleted.
+		f := func(filename string) error {
+			bdir := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, filename)
+			// This bundle is deprecated, remove the info file
+			if err = os.RemoveAll(bdir + "-info"); err != nil {
+				return err
+			}
+			// Create the empty dir for update to mark all files as deleted
+			if err = os.MkdirAll(bdir, 0755); err != nil {
+				return errors.Wrapf(err, "Failed to create bundle directory: %s", bdir)
+			}
+			return nil
+		}
+		fmt.Println("Removing deprecated bundle-info files...")
+		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
+		if err = b.ModifyBundles(f); err != nil {
+			fail(err)
+		}
+
 		// Link the +20 bundles to the +10 so we are building the update with the same
 		// underlying content. The only things that might change are the manifests
 		// (potentially the pack and full-file formats as well, though this is very
@@ -243,26 +264,6 @@ var buildFormatOldCmd = &cobra.Command{
 		fmt.Println(" Copying +20 bundles to +10 bundles")
 		if err = helpers.RunCommandSilent("cp", "-al", source, dest); err != nil {
 			failf("Failed to copy +10 bundles to +20: %s\n", err)
-		}
-
-		// Wipes the <bundle>-info files and replaces them with
-		// <bundle>/ directories that are empty. When the manifest creation happens it will
-		// mark all files in that bundles as deleted.
-		f := func(fileToScan string) error {
-			// This bundle is deprecated, remove the info file
-			if err = os.RemoveAll(fileToScan); err != nil {
-				return err
-			}
-			// Create the empty dir for update to mark all files as deleted
-			if err = os.MkdirAll(fileToScan[:len(fileToScan)-5], 0755); err != nil {
-				return errors.Wrapf(err, "Failed to create bundle directory: %s", fileToScan[:len(fileToScan)-5])
-			}
-			return nil
-		}
-		fmt.Println("Removing deprecated bundle-info files...")
-		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
-		if err = b.ModifyBundles(f); err != nil {
-			fail(err)
 		}
 
 		// Set the format back to old for the actual build update
