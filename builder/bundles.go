@@ -392,7 +392,6 @@ func buildOsCore(b *Builder, packagerCmd []string, chrootDir, version string) er
 	if err := createClearDir(chrootDir, version); err != nil {
 		return err
 	}
-
 	if err := b.UpdateOsRelease(version); err != nil {
 		return errors.Wrap(err, "couldn't fix os-release file")
 	}

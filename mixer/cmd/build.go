@@ -259,7 +259,7 @@ var buildFormatOldCmd = &cobra.Command{
 			}
 			return nil
 		}
-
+		fmt.Println("Removing deprecated bundle-info files...")
 		// Remove deleted bundles and replace with empty dirs for update to mark as deleted
 		if err = b.ModifyBundles(f); err != nil {
 			fail(err)
@@ -569,6 +569,8 @@ func init() {
 	buildFormatBumpCmd.AddCommand(buildFormatNewCmd)
 	buildFormatBumpCmd.AddCommand(buildFormatOldCmd)
 	buildFormatBumpCmd.Flags().StringVar(&buildFlags.newFormat, "new-format", "", "Supply the next format version to build mixes in")
+	buildFormatOldCmd.Flags().StringVar(&buildFlags.newFormat, "new-format", "", "Supply the next format version to build mixes in")
+	buildFormatNewCmd.Flags().StringVar(&buildFlags.newFormat, "new-format", "", "Supply the next format version to build mixes in")
 
 	buildCmd.PersistentFlags().IntVar(&buildFlags.numFullfileWorkers, "fullfile-workers", 0, "Number of parallel workers when creating fullfiles, 0 means number of CPUs")
 	buildCmd.PersistentFlags().IntVar(&buildFlags.numDeltaWorkers, "delta-workers", 0, "Number of parallel workers when creating deltas, 0 means number of CPUs")

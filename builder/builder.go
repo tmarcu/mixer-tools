@@ -1307,16 +1307,39 @@ func (b *Builder) UpdateMixVer(version int) error {
 
 // UpdateOsRelease sets the mix version in the full-chroot os-release file
 func (b *Builder) UpdateOsRelease(version string) error {
-	osReleaseFile := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, "full/usr/lib/os-release")
-	file, err := ioutil.ReadFile(osReleaseFile)
-	if err == nil {
+	filename := filepath.Join(b.Config.Builder.ServerStateDir, "image", b.MixVer, "full/usr/lib/os-release")
+
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	// TODO: If this is a mix, NAME and ID should probably change too. Create a section in
+	// configuration that will be used as reference to fill this.
+	// TODO: If this is a mix, add extra field for keeping track of the Clear Linux version
+	// used. Maybe also put the UPSTREAM URL, so we are ready to support mixes of mixes.
+	//
+	// See also: https://github.com/clearlinux/mixer-tools/issues/113
+
+	var newBuf bytes.Buffer
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		text := scanner.Text()
+		if strings.HasPrefix(text, "VERSION_ID=") {
+			text = "VERSION_ID=" + version
+		}
+		fmt.Fprintln(&newBuf, text)
+	}
+
+	err = scanner.Err()
+	if err != nil {
 		return err
 	}
 
-	re := regexp.MustCompile(`VERSION_ID\s*=\s*(0-9)+`)
-	newFile := re.ReplaceAllString(string(file), version)
-
-	return ioutil.WriteFile(osReleaseFile, []byte(newFile), 0644)
+	return ioutil.WriteFile(filename, newBuf.Bytes(), 0644)
 }
 
 // UpdateFormatFile update the format number in the full-chroot format file
@@ -1340,6 +1363,7 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 
 	var scanner *bufio.Scanner
 	for _, file := range files {
+		fmt.Println("CHECKING FILE: " + file.Name())
 		// We only care about removing <bundle>-info files
 		if !strings.HasSuffix(file.Name(), "-info") {
 			continue
@@ -1356,9 +1380,11 @@ func (b *Builder) ModifyBundles(action func(string) error) error {
 		re := regexp.MustCompile(`#\s*[STATUS]:\s*Deprecated.*`)
 		for scanner.Scan() {
 			str = scanner.Text()
+			fmt.Println("Scanning: " + str)
 			// Don't scan past header, stop once we have no more # comments
 			if str[0] == '#' {
 				if index := re.FindStringIndex(str); index != nil {
+					fmt.Println("Found deprecated bundle: " + fileToScan)
 					// Call the callback function we need on the file we're scanning
 					if err = action(fileToScan); err != nil {
 						return err
